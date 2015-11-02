@@ -21,6 +21,7 @@ executable v201
                      , base >= 4.7 && < 5
                      , bytestring
                      , mysql-simple
+                     , streaming-commons
                      , text
                      , time
                      , warp

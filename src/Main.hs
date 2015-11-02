@@ -11,6 +11,8 @@ import           Data.Aeson
 import           Data.Aeson.Types
 import qualified Data.ByteString.Lazy as BL
 import           Data.Char
+import           Data.Streaming.Network (HostPreference)
+import           Data.String
 import           Data.Time
 import           Data.Word
 import           Database.MySQL.Simple
@@ -33,8 +35,20 @@ instance FromJSON DBConfiguration where
   parseJSON = genericParseJSON defaultOptions
                 { fieldLabelModifier = lowerFirst . drop 2 }
 
+instance FromJSON HostPreference where
+  parseJSON = fmap fromString . parseJSON
+
+data AppConfiguration = AppConfiguration
+  { appHost :: HostPreference
+  , appPort :: Int
+  } deriving Generic
+instance FromJSON AppConfiguration where
+  parseJSON = genericParseJSON defaultOptions
+                { fieldLabelModifier = lowerFirst . drop 3 }
+
 data Configuration = Configuration
-  { confDB :: DBConfiguration
+  { confDB  :: DBConfiguration
+  , confApp :: AppConfiguration
   } deriving Generic
 instance FromJSON Configuration where
   parseJSON = genericParseJSON defaultOptions
@@ -87,7 +101,7 @@ connBuilder DBConfiguration {..} = ConnBuilder
   , cb_poolConfiguration = poolCfg }
   where
     poolCfg = PoolCfg
-      { pc_stripes      = 1
+      { pc_stripes      = 5
       , pc_resPerStripe = 1000
       , pc_keepOpenTime = 180 }
 
@@ -96,12 +110,10 @@ main = do
   config :: Configuration <- maybe (error "wtf") pure
                              =<< fmap decode . BL.readFile
                              =<< fmap head getArgs
-  putStrLn $ "Listening at " ++ show host ++ ":" ++ show port
-  spockAsApp (spock (cfg config) app) >>= runSettings settings
+  -- putStrLn $ "Listening at " ++ show host ++ ":" ++ show port
+  spockAsApp (spock (cfg config) app) >>= runSettings (settings config)
   where
-    host = "127.0.0.1"
-    port = 9091
-    settings = setPort port . setHost host $ defaultSettings
+    settings Configuration{..} = setPort (appPort confApp) . setHost (appHost confApp) $ defaultSettings
     sessCfg = defaultSessionCfg ()
     cfg config = SpockCfg
       { spc_initialState   = ()
